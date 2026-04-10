@@ -1,0 +1,140 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ChromaLlama Chat</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <style>
+        :root {
+            --bg: #0b141a;
+            --panel: #111b21;
+            --user-msg: #005c4b;
+            --ai-msg: #202c33;
+            --text: #e9edef;
+            --primary: #00a884;
+        }
+
+        body, html { 
+            height: 100%; margin: 0; font-family: 'Segoe UI', sans-serif; 
+            background-color: var(--bg); color: var(--text);
+        }
+
+        .chat-container {
+            display: flex; flex-direction: column; height: 100vh; max-width: 800px; margin: 0 auto;
+            background: var(--panel); box-shadow: 0 0 20px rgba(0,0,0,0.5);
+        }
+
+        /* Topo */
+        .header { 
+            padding: 15px 20px; background: #202c33; display: flex; align-items: center; gap: 15px;
+            border-bottom: 1px solid rgba(255,255,255,0.1);
+        }
+        .header .status-icon { color: var(--primary); animation: pulse 2s infinite; }
+
+        /* Área de Mensagens */
+        #chatBox {
+            flex: 1; overflow-y: auto; padding: 20px; display: flex; flex-direction: column; gap: 12px;
+            scrollbar-width: thin; scrollbar-color: #374045 transparent;
+        }
+
+        .message {
+            max-width: 80%; padding: 10px 15px; border-radius: 8px; font-size: 0.95rem;
+            line-height: 1.4; position: relative; animation: messageIn 0.3s ease-out;
+        }
+        @keyframes messageIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+
+        .user { align-self: flex-end; background: var(--user-msg); border-bottom-right-radius: 2px; }
+        .ai { align-self: flex-start; background: var(--ai-msg); border-bottom-left-radius: 2px; }
+
+        /* Input */
+        .input-area {
+            padding: 15px; background: #202c33; display: flex; gap: 10px; align-items: center;
+        }
+        input {
+            flex: 1; background: #2a3942; border: none; padding: 12px 15px;
+            border-radius: 8px; color: white; outline: none; font-size: 1rem;
+        }
+        button {
+            background: var(--primary); color: white; border: none; width: 45px; height: 45px;
+            border-radius: 50%; cursor: pointer; transition: 0.2s; display: flex; align-items: center; justify-content: center;
+        }
+        button:hover { transform: scale(1.1); }
+        button:disabled { background: #374045; cursor: not-allowed; }
+
+        /* Loader */
+        .typing { font-size: 0.8rem; color: #8696a0; margin-left: 5px; display: none; }
+
+        @keyframes pulse { 0% { opacity: 1; } 50% { opacity: 0.5; } 100% { opacity: 1; } }
+    </style>
+</head>
+<body>
+
+    <div class="chat-container">
+        <div class="header">
+            <i class="fas fa-robot fa-2x"></i>
+            <div>
+                <strong>Llama 3 - Assistente</strong><br>
+                <small><i class="fas fa-circle status-icon"></i> Online</small>
+            </div>
+        </div>
+
+        <div id="chatBox">
+            <div class="message ai">Olá! Como posso te ajudar hoje?</div>
+        </div>
+
+        <div class="typing" id="typingStatus">Llama está pensando...</div>
+
+        <form class="input-area" id="chatForm">
+            <input type="text" id="userInput" placeholder="Digite uma mensagem..." autocomplete="off" required>
+            <button type="submit" id="sendBtn"><i class="fas fa-paper-plane"></i></button>
+        </form>
+    </div>
+
+    <script>
+        const chatBox = document.getElementById('chatBox');
+        const chatForm = document.getElementById('chatForm');
+        const userInput = document.getElementById('userInput');
+        const typingStatus = document.getElementById('typingStatus');
+        const sendBtn = document.getElementById('sendBtn');
+
+        function appendMessage(text, side) {
+            const msgDiv = document.createElement('div');
+            msgDiv.className = `message ${side}`;
+            msgDiv.textContent = text;
+            chatBox.appendChild(msgDiv);
+            chatBox.scrollTop = chatBox.scrollHeight;
+        }
+
+        chatForm.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const text = userInput.value.trim();
+            if (!text) return;
+
+            // Interface do Usuário
+            appendMessage(text, 'user');
+            userInput.value = '';
+            
+            // Estado de carregamento
+            typingStatus.style.display = 'block';
+            sendBtn.disabled = true;
+
+            try {
+                const response = await fetch('/ai', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ query: text })
+                });
+                
+                const data = await response.json();
+                appendMessage(data.answer, 'ai');
+            } catch (error) {
+                appendMessage("Erro na conexão com o servidor.", 'ai');
+            } finally {
+                typingStatus.style.display = 'none';
+                sendBtn.disabled = false;
+            }
+        });
+    </script>
+</body>
+</html>

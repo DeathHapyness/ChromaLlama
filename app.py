@@ -1,4 +1,4 @@
-from flask import Flask, request
+from flask import Flask, request, render_template
 from langchain_community.llms import Ollama
 from langchain_community.vectorstores import Chroma
 from langchain_text_splitters import RecursiveCharacterTextSplitter
@@ -8,9 +8,19 @@ from langchain.chains.combine_documents import create_stuff_documents_chain
 from langchain.chains import create_retrieval_chain
 from langchain.prompts import PromptTemplate
 
+import logging
+
+logger = logging.getLogger(__name__)
+
 app = Flask(__name__)
 
+usar_web = True  # Define the flag for web search
+
 folder_path = "db"
+
+@app.route("/")
+def home():
+    return render_template("index.html")
 
 cached_llm = Ollama(model="llama3")
 
@@ -113,6 +123,41 @@ def pdfPost():
     }
     return response
 
+import logging
+
+logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
+logger = logging.getLogger(__name__)
+
+def search_web(query):
+    print(f"\n{'='*50}")
+    print(f"[WEB SEARCH] Modelo recorreu à internet!")
+    print(f"[WEB SEARCH] Query: '{query}'")
+    print(f"{'='*50}")
+    results = []
+    with DDGS() as ddgs:
+        for r in ddgs.text(query, max_results=5):
+            results.append({"title": r["title"], "href": r["href"]})
+            print(f"[WEB SEARCH] -> {r['title']} | {r['href']}")
+    
+    print(f"[WEB SEARCH] Total encontrado: {len(results)} resultados\n")
+    return results
+
+if usar_web:
+    @app.route("/search_web", methods=["POST"])
+    def searchWebPost():
+        print(f"\n[WEB SEARCH] Rota /search_web chamada!")
+        json_content = request.json
+        query = json_content.get("query")
+        results = search_web(query)
+        response_answer = {"results": results}
+        return response_answer
+
+def model_select(pergunta):
+    pergunta = pergunta.lower()
+    if "bash" in pergunta or "linux" in pergunta or "script" in pergunta or "code" in pergunta or "terminal" in pergunta:
+        logger.info("[MODEL INVOKE] Detected technical query, invoking web search")
+        return "deepseek-coder"
+    return "llama3"
 
 def start_app():
     app.run(host="0.0.0.0", port=8080, debug=True)

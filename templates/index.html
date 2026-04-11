@@ -1,140 +1,251 @@
 <!DOCTYPE html>
-<html lang="pt-BR">
+<html lang="pt-BR" class="dark">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>ChromaLlama Chat</title>
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
-    <style>
-        :root {
-            --bg: #0b141a;
-            --panel: #111b21;
-            --user-msg: #005c4b;
-            --ai-msg: #202c33;
-            --text: #e9edef;
-            --primary: #00a884;
-        }
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>ChromaLlama Pro</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://unpkg.com/lucide@latest"></script>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&display=swap" rel="stylesheet" />
+  <style>
+    :root {
+      color-scheme: dark;
+      --surface: #09090b;
+      --surface-soft: rgba(15, 23, 42, 0.95);
+      --panel: rgba(7, 10, 17, 0.96);
+      --border: rgba(148, 163, 184, 0.12);
+      --text: #e2e8f0;
+      --muted: #94a3b8;
+      --accent: #22c55e;
+      --accent-soft: rgba(34, 197, 94, 0.18);
+      --ai-text: #60a5fa;
+    }
 
-        body, html { 
-            height: 100%; margin: 0; font-family: 'Segoe UI', sans-serif; 
-            background-color: var(--bg); color: var(--text);
-        }
+    * { box-sizing: border-box; }
+    html, body { margin: 0; min-height: 100%; font-family: 'Inter', sans-serif; background: radial-gradient(circle at top, var(--surface-soft) 0%, var(--surface) 65%, #020617 100%); color: var(--text); }
+    ::-webkit-scrollbar { width: 8px; }
+    ::-webkit-scrollbar-track { background: transparent; }
+    ::-webkit-scrollbar-thumb { background: rgba(148, 163, 184, 0.24); border-radius: 999px; }
+    ::-webkit-scrollbar-thumb:hover { background: rgba(148, 163, 184, 0.38); }
 
-        .chat-container {
-            display: flex; flex-direction: column; height: 100vh; max-width: 800px; margin: 0 auto;
-            background: var(--panel); box-shadow: 0 0 20px rgba(0,0,0,0.5);
-        }
+    .theme-active { border-color: var(--accent) !important; background: rgba(255,255,255,0.05) !important; }
+    .message-card { display: flex; gap: 0.75rem; align-items: flex-start; max-width: 900px; margin: 0 auto; padding: 0.25rem 0; }
+    .message-card.user { justify-content: flex-end; }
+    .message-bubble { background: transparent; border: none; box-shadow: none; padding: 0.35rem 0; width: 100%; }
+    .message-bubble.message-user { color: var(--text); text-align: right; }
+    .message-bubble.message-ai { color: var(--ai-text); margin-top: -0.2rem; }
+    .message-card .flex-shrink-0 { flex-shrink: 0; }
+    .message-card .flex-1 { min-width: 0; }
+    .message-loading { display: inline-flex; align-items: center; gap: 0.5rem; justify-content: center; width: 100%; min-height: 56px; border-radius: 18px; background: rgba(255,255,255,0.06); }
+    .message-loading span { width: 10px; height: 10px; border-radius: 999px; background: rgba(255,255,255,0.85); opacity: 0.3; animation: loading-dots 1.2s infinite ease-in-out both; }
+    .message-loading span:nth-child(1) { animation-delay: 0s; }
+    .message-loading span:nth-child(2) { animation-delay: 0.2s; }
+    .message-loading span:nth-child(3) { animation-delay: 0.4s; }
+    @keyframes loading-dots { 0%, 80%, 100% { opacity: 0.3; transform: translateY(0); } 40% { opacity: 1; transform: translateY(-4px); } }
+    .sidebar-hidden { display: none !important; }
+    .settings-open { transform: translateX(0); }
+    .panel-bg { background-color: var(--panel) !important; }
+    .surface-bg { background-color: var(--surface) !important; }
+    .layout-compact .message-card { gap: 0.75rem; }
+    .layout-compact .message-bubble { padding: 1rem; }
+    .layout-spacious .message-bubble { padding: 1.5rem; }
 
-        /* Topo */
-        .header { 
-            padding: 15px 20px; background: #202c33; display: flex; align-items: center; gap: 15px;
-            border-bottom: 1px solid rgba(255,255,255,0.1);
-        }
-        .header .status-icon { color: var(--primary); animation: pulse 2s infinite; }
-
-        /* Área de Mensagens */
-        #chatBox {
-            flex: 1; overflow-y: auto; padding: 20px; display: flex; flex-direction: column; gap: 12px;
-            scrollbar-width: thin; scrollbar-color: #374045 transparent;
-        }
-
-        .message {
-            max-width: 80%; padding: 10px 15px; border-radius: 8px; font-size: 0.95rem;
-            line-height: 1.4; position: relative; animation: messageIn 0.3s ease-out;
-        }
-        @keyframes messageIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
-
-        .user { align-self: flex-end; background: var(--user-msg); border-bottom-right-radius: 2px; }
-        .ai { align-self: flex-start; background: var(--ai-msg); border-bottom-left-radius: 2px; }
-
-        /* Input */
-        .input-area {
-            padding: 15px; background: #202c33; display: flex; gap: 10px; align-items: center;
-        }
-        input {
-            flex: 1; background: #2a3942; border: none; padding: 12px 15px;
-            border-radius: 8px; color: white; outline: none; font-size: 1rem;
-        }
-        button {
-            background: var(--primary); color: white; border: none; width: 45px; height: 45px;
-            border-radius: 50%; cursor: pointer; transition: 0.2s; display: flex; align-items: center; justify-content: center;
-        }
-        button:hover { transform: scale(1.1); }
-        button:disabled { background: #374045; cursor: not-allowed; }
-
-        /* Loader */
-        .typing { font-size: 0.8rem; color: #8696a0; margin-left: 5px; display: none; }
-
-        @keyframes pulse { 0% { opacity: 1; } 50% { opacity: 0.5; } 100% { opacity: 1; } }
-    </style>
+    .open-sidebar-button { position: fixed; left: 1rem; top: 1rem; z-index: 40; }
+  </style>
 </head>
-<body>
+<body class="h-screen overflow-hidden">
+  <button id="openSidebarBtn" class="open-sidebar-button hidden inline-flex items-center gap-2 rounded-3xl border border-zinc-800/70 bg-[#0f172a]/95 px-4 py-3 text-sm text-zinc-200 shadow-lg hover:bg-[#141d2d] transition">
+    <i data-lucide="chevrons-right" class="w-4 h-4"></i>
+    Abrir painel
+  </button>
 
-    <div class="chat-container">
-        <div class="header">
-            <i class="fas fa-robot fa-2x"></i>
-            <div>
-                <strong>Llama 3 - Assistente</strong><br>
-                <small><i class="fas fa-circle status-icon"></i> Online</small>
+  <div class="flex h-full">
+    <aside id="sidebar" class="z-10 w-[320px] flex-shrink-0 flex-col border-r border-[var(--border)] panel-bg backdrop-blur-xl transition-all duration-300">
+      <div class="px-5 py-5 border-b border-[var(--border)]">
+        <div class="flex items-center justify-between gap-3">
+          <div>
+            <p class="text-[11px] uppercase tracking-[0.35em] text-zinc-500 mb-2">Sessões</p>
+            <h1 class="text-2xl font-semibold text-white">ChromaLlama</h1>
+          </div>
+          <button id="toggleSidebarBtn" class="inline-flex h-12 w-12 items-center justify-center rounded-full bg-zinc-900/80 p-3 text-zinc-300 hover:bg-zinc-800 transition" aria-label="Fechar painel de sessões" title="Fechar painel de sessões">
+            <i data-lucide="x" class="w-5 h-5"></i>
+          </button>
+        </div>
+        <div class="mt-4 space-y-3">
+          <button id="newChatBtn" class="w-full inline-flex items-center justify-center gap-2 rounded-3xl border border-zinc-800/80 bg-emerald-500/10 px-4 py-3 text-sm font-semibold text-emerald-200 transition hover:bg-emerald-500/15">
+            <i data-lucide="plus" class="w-4 h-4"></i>
+            Novo chat
+          </button>
+          <div class="relative">
+            <input id="chatSearchInput" type="search" placeholder="Buscar chats..." class="w-full rounded-3xl border border-zinc-800/70 bg-[#0f172a]/95 px-4 py-3 text-sm text-zinc-100 outline-none focus:border-accent focus:ring-2 focus:ring-[rgba(34,197,94,0.2)] transition" />
+            <i data-lucide="search" class="absolute right-4 top-1/2 -translate-y-1/2 text-zinc-500 w-4 h-4"></i>
+          </div>
+        </div>
+      </div>
+
+      <div class="flex-1 overflow-y-auto p-4 space-y-3">
+        <div class="pb-2 border-b border-zinc-800/50">
+          <span id="chatCountLabel" class="text-sm text-zinc-400">0 chats</span>
+        </div>
+        <div id="chatList" class="space-y-3 pt-3"></div>
+      </div>
+
+      <div class="px-5 py-4 border-t border-zinc-800/60 bg-[#04070f]/95">
+        <div class="rounded-[28px] border border-zinc-800/70 bg-[#0f172a]/95 p-4 text-sm leading-6 text-zinc-400">
+          <p class="font-semibold text-zinc-200 mb-2">Ajuda rápida</p>
+          <p>Use o botão de editar para renomear, o lixo para apagar e o campo de busca para encontrar conversas.</p>
+          <br>
+          <p>Tente sempre mandar prompts bjetivos e diretos assim fazendo com que a IA entenda melhor suas intenções e responda de forma mais precisa.</p>
+        </div>
+      </div>
+    </aside>
+
+    <section class="flex-1 flex flex-col overflow-hidden">
+      <header class="flex items-center justify-between gap-4 px-6 py-5 border-b border-[var(--border)] panel-bg backdrop-blur-xl">
+        <div class="flex items-center gap-4">
+          <div class="flex h-14 w-14 items-center justify-center rounded-3xl bg-emerald-500/15 border border-emerald-500/20 text-emerald-300">
+            <i data-lucide="zap" class="w-6 h-6"></i>
+          </div>
+          <div>
+            <p class="text-xs uppercase tracking-[0.35em] text-zinc-500">Assistente</p>
+            <div class="flex flex-wrap items-center gap-2">
+              <h2 id="currentChatTitle" class="text-xl font-semibold text-white">Chat Principal</h2>
+              <span id="sessionStatus" class="rounded-full bg-zinc-900/80 px-3 py-1 text-[11px] uppercase tracking-[0.3em] text-zinc-400">Ativo</span>
             </div>
+          </div>
         </div>
 
-        <div id="chatBox">
-            <div class="message ai">Olá! Como posso te ajudar hoje?</div>
+        <div class="flex items-center gap-3">
+          <div class="rounded-2xl border border-zinc-800/60 bg-[#0f172a]/95 px-4 py-3 text-sm text-zinc-200 flex items-center gap-2">
+            <i data-lucide="cpu" class="w-4 h-4 text-zinc-400"></i>
+            <span id="currentModelLabel">mistral:7b</span>
+          </div>
+          <button id="clearChatBtn" class="rounded-full bg-zinc-900/80 p-3 text-zinc-300 transition hover:bg-zinc-800" title="Limpar chat atual">
+            <i data-lucide="trash-2" class="w-5 h-5"></i>
+          </button>
+          <button id="openSettingsBtn" class="rounded-3xl bg-zinc-900/80 px-4 py-3 text-zinc-200 transition hover:bg-zinc-800">
+            <i data-lucide="settings" class="w-5 h-5"></i>
+          </button>
         </div>
+      </header>
 
-        <div class="typing" id="typingStatus">Llama está pensando...</div>
+      <main id="chatArea" class="flex-1 overflow-y-auto px-6 py-6 space-y-6 bg-[radial-gradient(circle_at_top,_rgba(15,23,42,1),_rgba(3,6,13,0.93)_55%,_rgba(2,4,11,1)_100%)]">
+        <div id="emptyState" class="rounded-[32px] border border-zinc-800/60 bg-[#04070f]/90 p-10 text-center text-zinc-500">
+          Selecione um chat ou crie um novo para começar a conversar.
+        </div>
+      </main>
 
-        <form class="input-area" id="chatForm">
-            <input type="text" id="userInput" placeholder="Digite uma mensagem..." autocomplete="off" required>
-            <button type="submit" id="sendBtn"><i class="fas fa-paper-plane"></i></button>
+      <footer class="border-t border-[var(--border)] panel-bg px-6 py-5">
+        <form id="messageForm" class="mx-auto flex max-w-5xl gap-3">
+          <div class="relative flex-1">
+            <input id="userInput" type="text" placeholder="Digite sua pergunta..." autocomplete="off"
+              class="w-full rounded-3xl border border-zinc-800/70 bg-[#0f172a]/95 px-5 py-4 text-sm text-zinc-100 outline-none focus:border-accent focus:ring-2 focus:ring-[rgba(34,197,94,0.2)] transition"
+            />
+            <span class="absolute right-5 top-1/2 -translate-y-1/2 text-xs text-zinc-500">Enter para enviar</span>
+          </div>
+          <button id="sendBtn" type="submit" class="inline-flex min-w-[120px] items-center justify-center rounded-3xl bg-emerald-500 px-5 py-4 text-sm font-semibold text-black transition hover:bg-emerald-400 disabled:cursor-not-allowed disabled:opacity-60">
+            Enviar
+          </button>
         </form>
+      </footer>
+    </section>
+  </div>
+
+  <aside id="settingsPanel" class="fixed right-0 top-0 z-20 h-full w-[340px] translate-x-full border-l border-[var(--border)] panel-bg backdrop-blur-xl transition-transform duration-300">
+    <div class="flex items-center justify-between px-6 py-6 border-b border-zinc-800/60">
+      <div>
+        <p class="text-[11px] uppercase tracking-[0.35em] text-zinc-500">Configurações</p>
+        <h2 class="text-2xl font-semibold text-white">Personalização</h2>
+      </div>
+      <button id="closeSettingsBtn" class="rounded-2xl bg-zinc-900/80 p-3 text-zinc-300 transition hover:bg-zinc-800">
+        <i data-lucide="x" class="w-5 h-5"></i>
+      </button>
     </div>
 
-    <script>
-        const chatBox = document.getElementById('chatBox');
-        const chatForm = document.getElementById('chatForm');
-        const userInput = document.getElementById('userInput');
-        const typingStatus = document.getElementById('typingStatus');
-        const sendBtn = document.getElementById('sendBtn');
+    <div class="space-y-6 px-6 py-6 overflow-y-auto h-[calc(100%-104px)]">
+      <div class="rounded-3xl border border-zinc-800/70 bg-[#0f172a]/95 p-4 text-sm text-zinc-100">
+        <p class="font-semibold text-zinc-200 mb-2">Modelo usado</p>
+        <p id="settingsModelLabel" class="text-sm text-zinc-300">O programa escolhe automaticamente</p>
+      </div>
 
-        function appendMessage(text, side) {
-            const msgDiv = document.createElement('div');
-            msgDiv.className = `message ${side}`;
-            msgDiv.textContent = text;
-            chatBox.appendChild(msgDiv);
-            chatBox.scrollTop = chatBox.scrollHeight;
-        }
+      <div class="space-y-3">
+        <label class="text-sm font-medium text-zinc-200">Paleta do site</label>
+        <div id="themeSelector" class="grid grid-cols-3 gap-3">
+          <button type="button" data-theme="verde" class="theme-chip rounded-3xl border border-zinc-800/70 bg-[#0f172a]/95 p-4 text-left transition">
+            <span class="block text-sm font-semibold text-zinc-100">Verde</span>
+            <span class="block text-xs text-zinc-500 mt-1">Clássico</span>
+          </button>
+          <button type="button" data-theme="azul" class="theme-chip rounded-3xl border border-zinc-800/70 bg-[#0f172a]/95 p-4 text-left transition">
+            <span class="block text-sm font-semibold text-zinc-100">Azul</span>
+            <span class="block text-xs text-zinc-500 mt-1">Céu</span>
+          </button>
+          <button type="button" data-theme="roxo" class="theme-chip rounded-3xl border border-zinc-800/70 bg-[#0f172a]/95 p-4 text-left transition">
+            <span class="block text-sm font-semibold text-zinc-100">Roxo</span>
+            <span class="block text-xs text-zinc-500 mt-1">Moderno</span>
+          </button>
+        </div>
+      </div>
 
-        chatForm.addEventListener('submit', async (e) => {
-            e.preventDefault();
-            const text = userInput.value.trim();
-            if (!text) return;
+      <div class="space-y-3">
+        <label class="text-sm font-medium text-zinc-200">Cor principal do site</label>
+        <div class="flex items-center gap-3">
+          <input id="colorPicker" type="color" value="#22c55e" class="h-12 w-16 rounded-3xl border border-zinc-800/70 bg-[#0f172a]/95 p-0" />
+          <button id="resetColorsBtn" type="button" class="rounded-3xl border border-zinc-800/70 bg-[#0f172a]/95 px-4 py-3 text-sm text-zinc-100 transition hover:bg-zinc-900/80">
+            Resetar cores
+          </button>
+        </div>
+        <p class="text-xs text-zinc-500">Escolha a cor principal do site para ajustar a aparência completa.</p>
+      </div>
 
-            // Interface do Usuário
-            appendMessage(text, 'user');
-            userInput.value = '';
-            
-            // Estado de carregamento
-            typingStatus.style.display = 'block';
-            sendBtn.disabled = true;
+      <div class="space-y-3">
+        <label class="text-sm font-medium text-zinc-200">Cor de fundo</label>
+        <input id="backgroundColorPicker" type="color" value="#0f172a" class="h-12 w-16 rounded-3xl border border-zinc-800/70 bg-[#0f172a]/95 p-0" />
+      </div>
 
-            try {
-                const response = await fetch('/ai', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ query: text })
-                });
-                
-                const data = await response.json();
-                appendMessage(data.answer, 'ai');
-            } catch (error) {
-                appendMessage("Erro na conexão com o servidor.", 'ai');
-            } finally {
-                typingStatus.style.display = 'none';
-                sendBtn.disabled = false;
-            }
-        });
-    </script>
+      <div class="space-y-3">
+        <label class="text-sm font-medium text-zinc-200">Cor dos painéis</label>
+        <input id="panelColorPicker" type="color" value="#04070f" class="h-12 w-16 rounded-3xl border border-zinc-800/70 bg-[#0f172a]/95 p-0" />
+      </div>
+
+      <div class="space-y-3">
+        <label class="text-sm font-medium text-zinc-200">Cor do texto do usuário</label>
+        <input id="textColorPicker" type="color" value="#e2e8f0" class="h-12 w-16 rounded-3xl border border-zinc-800/70 bg-[#0f172a]/95 p-0" />
+      </div>
+
+      <div class="space-y-3">
+        <label class="text-sm font-medium text-zinc-200">Cor do texto da IA</label>
+        <input id="aiTextColorPicker" type="color" value="#60a5fa" class="h-12 w-16 rounded-3xl border border-zinc-800/70 bg-[#0f172a]/95 p-0" />
+      </div>
+
+      <div class="space-y-3">
+        <label class="text-sm font-medium text-zinc-200">Layout</label>
+        <div class="grid grid-cols-2 gap-3">
+          <button type="button" data-layout="compact" class="layout-chip rounded-3xl border border-zinc-800/70 bg-[#0f172a]/95 p-4 text-left transition">
+            <span class="block text-sm font-semibold text-zinc-100">Compacto</span>
+            <span class="block text-xs text-zinc-500 mt-1">Mais mensagens por tela</span>
+          </button>
+          <button type="button" data-layout="spacious" class="layout-chip rounded-3xl border border-zinc-800/70 bg-[#0f172a]/95 p-4 text-left transition">
+            <span class="block text-sm font-semibold text-zinc-100">Espaçado</span>
+            <span class="block text-xs text-zinc-500 mt-1">Mais confortável</span>
+          </button>
+        </div>
+      </div>
+
+      <div class="space-y-3">
+        <label class="text-sm font-medium text-zinc-200">Avatar do usuário</label>
+        <div class="flex items-center gap-3">
+          <img id="profileAvatar" src="https://ui-avatars.com/api/?name=Usu%C3%A1rio&background=27272a&color=fff" alt="Avatar do usuário" class="h-14 w-14 rounded-full border border-zinc-800/70 bg-zinc-900 object-cover" />
+          <input id="avatarName" type="text" placeholder="Nome do usuário" class="flex-1 rounded-3xl border border-zinc-800/70 bg-[#0f172a]/95 px-4 py-3 text-sm text-zinc-100 outline-none" />
+        </div>
+        <p class="text-xs text-zinc-500">Atualize o nome para alterar o avatar nas mensagens.</p>
+      </div>
+
+      <div class="rounded-3xl border border-zinc-800/70 bg-[#0f172a]/95 p-4 text-sm leading-6 text-zinc-400">
+        Ajuste o tema e o layout. O modelo é mostrado, mas não é escolhido pelo usuário.
+      </div>
+    </div>
+  </aside>
+
+  <script src="{{ url_for('static', filename='js/chat-app.js') }}" defer></script>
 </body>
 </html>

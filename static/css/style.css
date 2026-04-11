@@ -1,0 +1,121 @@
+/* Configurações de Variáveis e Reset */
+:root {
+  --surface: #212121;
+  --surface-soft: #2f2f2f;
+  --panel: #171717;
+  --border: rgba(255, 255, 255, 0.08);
+  --text: #ececec;
+  --muted: #b4b4b4;
+  --accent: #10a37f;
+  --accent-soft: rgba(16, 163, 127, 0.15);
+  --sidebar-width: 288px;
+}
+
+[x-cloak] { display: none !important; }
+
+body { 
+  background-color: var(--surface); 
+  color: var(--text); 
+  font-family: 'Inter', sans-serif; 
+  overflow: hidden;
+}
+
+/* Garante que o container principal ocupe toda a tela e não role o corpo da página */
+.main-wrapper {
+  display: flex;
+  height: 100vh;
+  width: 100vw;
+  overflow: hidden; 
+}
+
+/* Área de mensagens: Ocupa o espaço restante e permite rolagem interna */
+main {
+  flex: 1;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+}
+
+/* Footer: Fica fixo no fundo, com um fundo sólido para não sobrepor o texto do chat */
+footer {
+  flex-shrink: 0; /* Impede que a barra de prompt diminua de tamanho */
+  background-color: var(--surface);
+  border-top: 1px solid var(--border);
+  padding: 1rem 1.5rem 2rem 1.5rem; /* Ajuste o padding conforme necessário */
+  z-index: 10;
+}
+
+/* Mensagens do Chat */
+.message-ai { padding: 1rem 0; max-width: 100%; }
+.message-user { 
+  background: var(--surface-soft); 
+  border-radius: 1.25rem; 
+  padding: 0.75rem 1.25rem; 
+  display: inline-block; 
+  max-width: 85%; 
+  word-wrap: break-word; 
+}
+
+/* --- BLOCOS DE CÓDIGO --- */
+.message-ai pre {
+  background-color: #0d0d0d;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 1rem;
+  margin: 1rem 0;
+  overflow-x: auto;
+  font-family: 'Fira Code', monospace;
+  font-size: 0.9rem;
+  line-height: 1.5;
+}
+
+.message-ai code {
+  font-family: 'Fira Code', monospace;
+  background-color: rgba(255, 255, 255, 0.1);
+  padding: 0.2rem 0.4rem;
+  border-radius: 4px;
+  font-size: 0.9em;
+}
+
+.message-ai pre code {
+  background-color: transparent;
+  padding: 0;
+  border-radius: 0;
+}
+
+/* Status e Animações */
+.status-badge {
+  display: inline-flex; 
+  align-items: center; 
+  gap: 0.5rem; 
+  font-size: 11px; 
+  font-weight: 600;
+  text-transform: uppercase; 
+  color: var(--accent); 
+  background: var(--accent-soft);
+  padding: 4px 10px; 
+  border-radius: 6px; 
+  margin-bottom: 8px;
+}
+
+.loading-dots span { 
+  width: 6px; 
+  height: 6px; 
+  border-radius: 50%; 
+  background: var(--muted); 
+  display: inline-block; 
+  animation: pulse 1.4s infinite; 
+}
+
+@keyframes pulse { 0%, 100% { opacity: 0.3; } 50% { opacity: 1; } }
+
+/* Scrollbar Customizada */
+::-webkit-scrollbar { width: 6px; height: 6px; }
+::-webkit-scrollbar-thumb { background: rgba(255, 255, 255, 0.1); border-radius: 10px; }
+
+/* Responsividade */
+@media (max-width: 768px) {
+  .main-wrapper { padding-left: 0 !important; }
+  .sidebar-native { width: 100% !important; max-width: 300px; }
+  .message-user { max-width: 90%; }
+}

@@ -10,6 +10,8 @@ from langchain.prompts import PromptTemplate, ChatPromptTemplate, MessagesPlaceh
 from langchain_community.chat_message_histories import RedisChatMessageHistory
 from langchain_core.runnables.history import RunnableWithMessageHistory
 from langchain_core.messages import HumanMessage, AIMessage
+from langchain.agents import create_react_agent, AgentExecutor
+from langchain.tools import tool
 from ddgs import DDGS
 import logging
 
@@ -25,7 +27,7 @@ REDIS_URL = "redis://localhost:6379"
 embedding = FastEmbedEmbeddings()
 
 text_splitter = RecursiveCharacterTextSplitter(
-    chunk_size=1024, chunk_overlap=80, length_function=len, is_separator_regex=False
+    chunk_size=1024, chunk_overlap=200, length_function=len, is_separator_regex=False
 )
 
 raw_prompt = ChatPromptTemplate.from_messages([
@@ -46,8 +48,90 @@ def get_model(pergunta):
 def get_session_history(session_id: str) -> RedisChatMessageHistory:
     return RedisChatMessageHistory(session_id=session_id, url=REDIS_URL)
 
+def search_web(query):
+    logger.info(f"[WEB SEARCH] Modelo recorreu a internet! Query: '{query}'")
+    results = []
+    try:
+        with DDGS() as ddgs:
+            for r in ddgs.text(query, max_results=5):
+                results.append({"title": r["title"], "href": r["href"]})
+                logger.info(f"[WEB SEARCH] -> {r['title']} | {r['href']}")
+        logger.info(f"[WEB SEARCH] Total encontrado: {len(results)} resultados")
+    except Exception as e:
+        logger.error(f"[WEB SEARCH] ERRO na busca: {str(e)}")
+    return results
+
+@tool
+def buscar_no_db(query: str) -> str:
+    """Use esta ferramenta primeiro para buscar informações nos documentos indexados pelo usuário."""
+    try:
+        vector_store = Chroma(persist_directory=folder_path, embedding_function=embedding)
+        retriever = vector_store.as_retriever(
+            search_type="similarity_score_threshold",
+            search_kwargs={"k": 5, "score_threshold": 0.5}
+        )
+        docs = retriever.invoke(query)
+        if not docs:
+            return "Nenhum documento relevante encontrado no banco de dados."
+        return "\n\n".join([doc.page_content for doc in docs])
+    except Exception as e:
+        logger.error(f"[TOOL buscar_no_db] ERRO: {str(e)}")
+        return f"Erro ao buscar no banco de dados: {str(e)}"
+
+@tool
+def buscar_na_web(query: str) -> str:
+    """Use esta ferramenta quando a busca no banco de dados for insuficiente ou precisar de informações atuais."""
+    try:
+        resultados = search_web(query)
+        if not resultados:
+            return "Nenhum resultado encontrado na web."
+        return "\n".join([f"- {r['title']}: {r['href']}" for r in resultados])
+    except Exception as e:
+        logger.error(f"[TOOL buscar_na_web] ERRO: {str(e)}")
+        return f"Erro ao buscar na web: {str(e)}"
+
+agent_prompt = PromptTemplate.from_template("""Você é um assistente técnico especializado em Linux e código.
+Responda sempre em português do Brasil.
+Se a pergunta for uma saudação, conversa simples ou não precisar de busca, responda diretamente sem usar ferramentas usando o formato:
+Thought: Esta é uma pergunta simples que não requer busca.
+Final Answer: sua resposta aqui
+
+Sempre busque no banco de dados primeiro antes de qualquer outra ação.
+Se o banco de dados retornar "Nenhum documento relevante encontrado", vá imediatamente para a busca na web sem tentar o banco de dados novamente.
+Se a busca na web também não tiver informação suficiente, responda com o seu próprio conhecimento.
+Nunca invente informações. Se não souber, diga que não sabe.
+
+Você tem acesso às seguintes ferramentas:
+{tools}
+
+Use o seguinte formato:
+Question: a pergunta que você deve responder
+Thought: você deve sempre pensar sobre o que fazer
+Action: a ação a tomar, deve ser uma de [{tool_names}]
+Action Input: o input para a ação
+Observation: o resultado da ação
+... (este Thought/Action/Action Input/Observation pode se repetir N vezes)
+Thought: Agora eu sei a resposta final
+Final Answer: a resposta final para a pergunta original
+
+Histórico da conversa:
+{chat_history}
+
+Question: {input}
+Thought: {agent_scratchpad}""")
+
+agent = create_react_agent(
+    llm=get_model(""),
+    tools=[buscar_no_db, buscar_na_web],
+    prompt=agent_prompt
+)
+
 @app.route("/")
 def home():
+    return render_template("chat_modern.html")
+
+@app.route("/old")
+def old_home():
     return render_template("index.html")
 
 @app.route("/ai", methods=["POST"])
@@ -58,22 +142,18 @@ def aiPost():
         query = json_content.get("query")
         session_id = json_content.get("session_id", "default")
         logger.info(f"[/ai] Query: '{query}' | Session: '{session_id}'")
-
         llm = get_model(query)
         chain = raw_prompt | llm
-
         chain_with_history = RunnableWithMessageHistory(
             chain,
             get_session_history,
             input_messages_key="input",
             history_messages_key="chat_history",
         )
-
         response = chain_with_history.invoke(
             {"input": query},
             config={"configurable": {"session_id": session_id}}
         )
-
         logger.info("[/ai] Resposta gerada com sucesso")
         return {"answer": response}
     except Exception as e:
@@ -88,40 +168,30 @@ def askPDFPost():
         query = json_content.get("query")
         session_id = json_content.get("session_id", "default")
         logger.info(f"[/ask_pdf] Query: '{query}' | Session: '{session_id}'")
-
         logger.info("[/ask_pdf] Carregando vector store")
         vector_store = Chroma(persist_directory=folder_path, embedding_function=embedding)
-
         retriever = vector_store.as_retriever(
             search_type="similarity_score_threshold",
-            search_kwargs={
-                "k": 5,
-                "score_threshold": 0.5,
-            },
+            search_kwargs={"k": 5, "score_threshold": 0.5},
         )
-
         llm = get_model(query)
         document_chain = create_stuff_documents_chain(llm, raw_prompt)
         chain = create_retrieval_chain(retriever, document_chain)
-
         chain_with_history = RunnableWithMessageHistory(
             chain,
             get_session_history,
             input_messages_key="input",
             history_messages_key="chat_history",
         )
-
         result = chain_with_history.invoke(
             {"input": query},
             config={"configurable": {"session_id": session_id}}
         )
-
         sources = []
         for doc in result["context"]:
             sources.append(
                 {"source": doc.metadata["source"], "page_content": doc.page_content}
             )
-
         logger.info(f"[/ask_pdf] Resposta gerada. Fontes: {len(sources)}")
         return {"answer": result["answer"], "sources": sources}
     except Exception as e:
@@ -137,19 +207,15 @@ def pdfPost():
         save_file = "pdf/" + file_name
         file.save(save_file)
         logger.info(f"[/pdf] Arquivo salvo: {file_name}")
-
         loader = PDFPlumberLoader(save_file)
         docs = loader.load_and_split()
         logger.info(f"[/pdf] Paginas carregadas: {len(docs)}")
-
         chunks = text_splitter.split_documents(docs)
         logger.info(f"[/pdf] Chunks gerados: {len(chunks)}")
-
         vector_store = Chroma.from_documents(
             documents=chunks, embedding=embedding, persist_directory=folder_path
         )
         vector_store.persist()
-
         logger.info("[/pdf] PDF indexado com sucesso")
         return {
             "status": "Successfully Uploaded",
@@ -161,18 +227,46 @@ def pdfPost():
         logger.error(f"[/pdf] ERRO: {str(e)}")
         return {"error": str(e)}, 500
 
-def search_web(query):
-    logger.info(f"[WEB SEARCH] Modelo recorreu a internet! Query: '{query}'")
-    results = []
+@app.route("/chat", methods=["POST"])
+def askAgentPost():
     try:
-        with DDGS() as ddgs:
-            for r in ddgs.text(query, max_results=5):
-                results.append({"title": r["title"], "href": r["href"]})
-                logger.info(f"[WEB SEARCH] -> {r['title']} | {r['href']}")
-        logger.info(f"[WEB SEARCH] Total encontrado: {len(results)} resultados")
+        json_content = request.json
+        query = json_content.get("query")
+        session_id = json_content.get("session_id", "default")
+        logger.info(f"[/chat] Query: '{query}' | Session: '{session_id}'")
+
+        llm = get_model(query)
+
+        agent = create_react_agent(
+            llm=llm,
+            tools=[buscar_no_db, buscar_na_web],
+            prompt=agent_prompt
+        )
+
+        agent_executor = AgentExecutor(
+            agent=agent,
+            tools=[buscar_no_db, buscar_na_web],
+            max_iterations=5,
+            early_stopping_method="force",
+            handle_parsing_errors=True,
+            verbose=True
+        )
+
+        agent_executor_com_historico = RunnableWithMessageHistory(
+            agent_executor,
+            get_session_history,
+            input_messages_key="input",
+            history_messages_key="chat_history",
+        )
+
+        resultado = agent_executor_com_historico.invoke(
+            {"input": query},
+            config={"configurable": {"session_id": session_id}}
+        )
+        return {"answer": resultado["output"]}
     except Exception as e:
-        logger.error(f"[WEB SEARCH] ERRO na busca: {str(e)}")
-    return results
+        logger.error(f"[/chat] ERRO: {str(e)}")
+        return {"error": str(e)}, 500
 
 if usar_web:
     @app.route("/search_web", methods=["POST"])

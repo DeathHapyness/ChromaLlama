@@ -1,8 +1,7 @@
-# ChromaLlama
 
 ![ChromaLlama Banner](static/js/img/Gemini_Generated_Image_9vbp7y9vbp7y9vbp.png)
 
-Assistente de IA pessoal focado em Linux e código, rodando completamente local via Ollama. Combina modelos de linguagem open source, busca semântica em documentos PDF, histórico de conversa persistente com Redis e busca na web via DuckDuckGo.
+Sua nova assistente de IA pessoal focado em Linux e código, rodando completamente local via Ollama e totalmente Open-SourceS. Combina modelos de linguagem open source, busca semântica em documentos PDF, histórico de conversa persistente com Redis e busca na web via DuckDuckGo.
 
 
 ---

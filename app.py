@@ -12,11 +12,48 @@ from langchain_core.runnables.history import RunnableWithMessageHistory
 from langchain_core.messages import HumanMessage, AIMessage
 from langchain.agents import create_react_agent, AgentExecutor
 from langchain.tools import tool
+from dotenv import load_dotenv
+import os
 from ddgs import DDGS
 import logging
+from langchain_community.document_loaders import WebBaseLoader
+
+#carregar env variables
+load_dotenv()
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
 logger = logging.getLogger(__name__)
+
+agent_prompt = PromptTemplate.from_template("""Você é um assistente técnico especializado em Linux e código.
+Responda sempre em português do Brasil.
+
+Regras importantes:
+- Para saudações e perguntas simples, responda diretamente sem usar ferramentas.
+- Para geração de código HTML, CSS, JavaScript, Python, Bash ou qualquer linguagem, responda diretamente com seu próprio conhecimento sem usar ferramentas.
+- Para perguntas sobre configurações, instalações ou informações específicas de software, busque no banco de dados primeiro.
+- Se o banco de dados não tiver informação suficiente, complemente com a busca na web.
+- Se o banco de dados retornar "Nenhum documento relevante encontrado", vá imediatamente para a busca na web sem tentar o banco de dados novamente.
+- Se a busca na web também não tiver informação suficiente, responda com o seu próprio conhecimento.
+- Nunca invente informações. Se não souber, diga que não sabe.
+
+Você tem acesso às seguintes ferramentas:
+{tools}
+
+Use o seguinte formato:
+Question: a pergunta que você deve responder
+Thought: você deve sempre pensar sobre o que fazer
+Action: a ação a tomar, deve ser uma de [{tool_names}]
+Action Input: o input para a ação
+Observation: o resultado da ação
+... (este Thought/Action/Action Input/Observation pode se repetir N vezes)
+Thought: Agora eu sei a resposta final
+Final Answer: a resposta final para a pergunta original
+
+Histórico da conversa:
+{chat_history}
+
+Question: {input}
+Thought: {agent_scratchpad}""")
 
 app = Flask(__name__)
 
@@ -31,17 +68,35 @@ text_splitter = RecursiveCharacterTextSplitter(
 )
 
 raw_prompt = ChatPromptTemplate.from_messages([
-    ("system", "Você é um assistente técnico especializado em Linux e código. Responda sempre em português do Brasil. Use o histórico da conversa e o contexto fornecido para responder. Se não souber a resposta, diga que não sabe."),
+    ("system", """Você é um assistente técnico especializado em Linux e código. 
+Responda sempre em português do Brasil.
+Quando o usuário pedir para GERAR, CRIAR ou ESCREVER código, você DEVE gerar o código completo sem recusar.
+Use o histórico da conversa e o contexto fornecido para responder. 
+Se não souber a resposta, diga que não sabe."""),
     MessagesPlaceholder(variable_name="chat_history"),
     ("human", "{input}"),
 ])
 
+def classificar_pergunta(query: str) -> str:
+    llm = Ollama(model="llama3.1:8b")
+    resposta = llm.invoke(f"""Classifique a pergunta abaixo em uma das duas categorias:
+- "codigo": se a pergunta pede para GERAR, CRIAR ou ESCREVER código, scripts, funções, sites, programas
+- "informacao": se a pergunta pede explicações, informações, configurações, instalações ou é uma conversa
+
+Responda APENAS com "codigo" ou "informacao", sem mais nada.
+
+Pergunta: {query}""")
+    
+    categoria = resposta.strip().lower()
+    logger.info(f"[ROUTER] Pergunta classificada como: '{categoria}'")
+    return "codigo" if "codigo" in categoria else "informacao"
+
 def get_model(pergunta):
     pergunta = pergunta.lower()
-    palavras_tecnicas = ["bash", "linux", "script", "code", "terminal", "python", "git", "ssh", "kernel", "package", "install", "comando"]
+    palavras_tecnicas = ["bash", "linux", "script", "code", "terminal", "python", "git", "ssh", "kernel", "package", "install", "comando", "html", "css", "javascript", "js", "site", "web","codigo","java","c++","c#","ruby","go","rust","docker","kubernetes","ansible","terraform","cloud","aws","azure","gcp"] 
     if any(word in pergunta for word in palavras_tecnicas):
-        logger.info("[MODEL SELECT] Query tecnica detectada -> usando qwen2.5-coder:7b")
-        return Ollama(model="qwen2.5-coder:7b")
+        logger.info("[MODEL SELECT] Query tecnica detectada -> usando llama3.1:8b")
+        return Ollama(model="llama3.1:8b")  
     logger.info("[MODEL SELECT] Query geral detectada -> usando mistral:7b")
     return Ollama(model="mistral:7b")
 
@@ -85,46 +140,23 @@ def buscar_na_web(query: str) -> str:
         resultados = search_web(query)
         if not resultados:
             return "Nenhum resultado encontrado na web."
-        return "\n".join([f"- {r['title']}: {r['href']}" for r in resultados])
+        
+        urls = [r["href"] for r in resultados[:2]]
+        logger.info(f"[WEB SEARCH] Acessando conteúdo das páginas: {urls}")
+        
+        try:
+            loader = WebBaseLoader(urls)
+            docs = loader.load()
+            conteudo = "\n\n".join([doc.page_content[:2000] for doc in docs])
+            logger.info(f"[WEB SEARCH] Conteúdo carregado de {len(docs)} páginas")
+            return conteudo if conteudo.strip() else "Conteúdo das páginas não pôde ser extraído."
+        except Exception as e:
+            logger.warning(f"[WEB SEARCH] Falha ao carregar páginas, usando só URLs: {str(e)}")
+            return "\n".join([f"- {r['title']}: {r['href']}" for r in resultados])
+
     except Exception as e:
         logger.error(f"[TOOL buscar_na_web] ERRO: {str(e)}")
         return f"Erro ao buscar na web: {str(e)}"
-
-agent_prompt = PromptTemplate.from_template("""Você é um assistente técnico especializado em Linux e código.
-Responda sempre em português do Brasil.
-Se a pergunta for uma saudação, conversa simples ou não precisar de busca, responda diretamente sem usar ferramentas usando o formato:
-Thought: Esta é uma pergunta simples que não requer busca.
-Final Answer: sua resposta aqui
-
-Sempre busque no banco de dados primeiro antes de qualquer outra ação.
-Se o banco de dados retornar "Nenhum documento relevante encontrado", vá imediatamente para a busca na web sem tentar o banco de dados novamente.
-Se a busca na web também não tiver informação suficiente, responda com o seu próprio conhecimento.
-Nunca invente informações. Se não souber, diga que não sabe.
-
-Você tem acesso às seguintes ferramentas:
-{tools}
-
-Use o seguinte formato:
-Question: a pergunta que você deve responder
-Thought: você deve sempre pensar sobre o que fazer
-Action: a ação a tomar, deve ser uma de [{tool_names}]
-Action Input: o input para a ação
-Observation: o resultado da ação
-... (este Thought/Action/Action Input/Observation pode se repetir N vezes)
-Thought: Agora eu sei a resposta final
-Final Answer: a resposta final para a pergunta original
-
-Histórico da conversa:
-{chat_history}
-
-Question: {input}
-Thought: {agent_scratchpad}""")
-
-agent = create_react_agent(
-    llm=get_model(""),
-    tools=[buscar_no_db, buscar_na_web],
-    prompt=agent_prompt
-)
 
 @app.route("/")
 def home():
@@ -155,7 +187,8 @@ def aiPost():
             config={"configurable": {"session_id": session_id}}
         )
         logger.info("[/ai] Resposta gerada com sucesso")
-        return {"answer": response}
+        answer = response.content if hasattr(response, 'content') else response
+        return {"answer": answer}
     except Exception as e:
         logger.error(f"[/ai] ERRO: {str(e)}")
         return {"error": str(e)}, 500
@@ -234,54 +267,56 @@ def askAgentPost():
         query = json_content.get("query")
         session_id = json_content.get("session_id", "default")
         logger.info(f"[/chat] Query: '{query}' | Session: '{session_id}'")
+        categoria = classificar_pergunta(query)
 
-        llm = get_model(query)
+        if categoria == "codigo":
+            logger.info("[ROUTER] Modo: geração de código direto")
+            llm = Ollama(model="qwen2.5-coder:7b")
+            chain = raw_prompt | llm
+            chain_with_history = RunnableWithMessageHistory(
+                chain,
+                get_session_history,
+                input_messages_key="input",
+                history_messages_key="chat_history",
+            )
+            response = chain_with_history.invoke(
+                {"input": query},
+                config={"configurable": {"session_id": session_id}}
+            )
+            answer = response.content if hasattr(response, 'content') else response
+            return {"answer": answer}
 
-        agent = create_react_agent(
-            llm=llm,
-            tools=[buscar_no_db, buscar_na_web],
-            prompt=agent_prompt
-        )
+        else:
+            logger.info("[ROUTER] Modo: agente com ferramentas")
+            llm = get_model(query)
+            agent = create_react_agent(
+                llm=llm,
+                tools=[buscar_no_db, buscar_na_web],
+                prompt=agent_prompt
+            )
+            agent_executor = AgentExecutor(
+                agent=agent,
+                tools=[buscar_no_db, buscar_na_web],
+                max_iterations=8,
+                early_stopping_method="force",
+                handle_parsing_errors="Formato inválido. Vá direto para: Final Answer: sua resposta aqui",
+                verbose=True
+            )
+            agent_executor_com_historico = RunnableWithMessageHistory(
+                agent_executor,
+                get_session_history,
+                input_messages_key="input",
+                history_messages_key="chat_history",
+            )
+            resultado = agent_executor_com_historico.invoke(
+                {"input": query},
+                config={"configurable": {"session_id": session_id}}
+            )
+            return {"answer": resultado["output"]}
 
-        agent_executor = AgentExecutor(
-            agent=agent,
-            tools=[buscar_no_db, buscar_na_web],
-            max_iterations=5,
-            early_stopping_method="force",
-            handle_parsing_errors=True,
-            verbose=True
-        )
-
-        agent_executor_com_historico = RunnableWithMessageHistory(
-            agent_executor,
-            get_session_history,
-            input_messages_key="input",
-            history_messages_key="chat_history",
-        )
-
-        resultado = agent_executor_com_historico.invoke(
-            {"input": query},
-            config={"configurable": {"session_id": session_id}}
-        )
-        return {"answer": resultado["output"]}
     except Exception as e:
         logger.error(f"[/chat] ERRO: {str(e)}")
         return {"error": str(e)}, 500
-
-if usar_web:
-    @app.route("/search_web", methods=["POST"])
-    def searchWebPost():
-        try:
-            logger.info("[/search_web] Rota chamada")
-            json_content = request.json
-            query = json_content.get("query")
-            session_id = json_content.get("session_id", "default")
-            logger.info(f"[/search_web] Query: '{query}' | Session: '{session_id}'")
-            results = search_web(query)
-            return {"results": results}
-        except Exception as e:
-            logger.error(f"[/search_web] ERRO: {str(e)}")
-            return {"error": str(e)}, 500
 
 def start_app():
     app.run(host="0.0.0.0", port=8080, debug=True)

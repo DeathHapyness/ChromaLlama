@@ -5,12 +5,12 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
   <title>ChromaLlama - Chat IA</title>
   
-  <script defer src="https://cdn.tailwindcss.com"></script>
-  <script src="https://unpkg.com/alpinejs@3.x.x/dist/cdn.min.js" defer></script>
-  <script src="https://unpkg.com/lucide@latest"></script>
-  
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Fira+Code:wght@400;500&display=swap" rel="stylesheet" />
   
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/tokyo-night-dark.min.css">
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+
   <style>
     :root {
       --surface: #121212;
@@ -55,6 +55,25 @@
 
     .message-user { background: var(--surface-soft); border-radius: 1.25rem; padding: 0.75rem 1.25rem; max-width: 85%; }
     
+    /* Estilos para o Markdown renderizado */
+    .prose pre { 
+      background: #0d0d0d !important; 
+      padding: 1rem; 
+      border-radius: 0.75rem; 
+      overflow-x: auto; 
+      margin: 1rem 0;
+      border: 1px solid var(--border);
+    }
+    .prose code { font-family: 'Fira Code', monospace; font-size: 0.9em; }
+    .prose :not(pre) > code {
+      background: rgba(255, 255, 255, 0.1);
+      padding: 0.2rem 0.4rem;
+      border-radius: 4px;
+      color: #88c0d0; /* Tom azulado Nord */
+    }
+    .prose p { margin-bottom: 0.75rem; }
+    .prose ul, .prose ol { padding-left: 1.25rem; margin-bottom: 0.75rem; }
+
     @media (min-width: 769px) {
       .sidebar-open .main-content { margin-left: var(--sidebar-width); }
     }
@@ -137,7 +156,7 @@
         <div class="max-w-3xl mx-auto px-6 py-8">
           <template x-for="msg in messages" :key="msg.id">
             <div class="mb-8 flex" :class="msg.role === 'user' ? 'justify-end' : 'justify-start'">
-              <div :class="msg.role === 'user' ? 'message-user' : 'message-ai'">
+              <div :class="msg.role === 'user' ? 'message-user' : 'message-ai w-full'">
                 <template x-if="msg.role === 'ai'">
                     <div class="flex items-center gap-2 mb-3 text-zinc-400">
                         <i data-lucide="bot" class="w-4 h-4 text-green-500"></i>
@@ -205,14 +224,25 @@
         messages: [],
 
         init() {
+          // Configuração do Markdown com realce de sintaxe
+          marked.setOptions({
+            highlight: function(code, lang) {
+              const language = hljs.getLanguage(lang) ? lang : 'plaintext';
+              return hljs.highlight(code, { language }).value;
+            },
+            langPrefix: 'hljs language-'
+          });
+
           this.loadChats(); 
           if (this.chats.length === 0) this.newChat();
           
           this.$nextTick(() => lucide.createIcons());
 
           this.$watch('messages', () => {
-              this.$nextTick(() => lucide.createIcons());
-              this.scrollToBottom();
+              this.$nextTick(() => {
+                lucide.createIcons();
+                this.scrollToBottom();
+              });
           });
         },
 
@@ -275,6 +305,8 @@
         async sendMessage() {
           if (!this.userInput.trim()) return;
           const query = this.userInput;
+          
+          // O usuário envia texto puro
           this.messages.push({ id: Date.now(), role: 'user', content: query });
           
           if (this.messages.length === 1) {
@@ -292,7 +324,13 @@
               body: JSON.stringify({ query: query, session_id: this.currentChatId })
             });
             const data = await res.json();
-            this.messages.push({ id: Date.now() + 1, role: 'ai', content: data.answer });
+            
+            // A IA salva o conteúdo já renderizado em HTML (Markdown)
+            this.messages.push({ 
+              id: Date.now() + 1, 
+              role: 'ai', 
+              content: marked.parse(data.answer) 
+            });
           } catch (e) {
             this.messages.push({ id: Date.now() + 1, role: 'ai', content: 'Erro de comunicação.' });
           } finally {
@@ -303,5 +341,8 @@
       }
     }
   </script>
+  <script defer src="https://cdn.tailwindcss.com"></script>
+  <script src="https://unpkg.com/alpinejs@3.x.x/dist/cdn.min.js" defer></script>
+  <script src="https://unpkg.com/lucide@latest"></script>
 </body>
 </html>

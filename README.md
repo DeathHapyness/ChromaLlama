@@ -27,12 +27,12 @@ Frontend (HTML/JS)
 Flask (app.py)
        │
        ├── /ai           → Chat direto com LLM + histórico Redis
-       ├── /ask_pdf      → RAG com ChromaDB + histórico Redis
+       ├── /ask_pdf      → RAG com Zilliz + histórico Redis
        ├── /pdf          → Upload e indexação de PDFs
        └── /search_web   → Busca no DuckDuckGo
        │
        ├── Redis         → Histórico de conversa por sessão
-       ├── ChromaDB      → Banco vetorial para documentos
+       ├── Zilliz      → Banco vetorial para documentos
        └── Ollama        → Servidor local de LLMs
 ```
 
@@ -42,7 +42,7 @@ Flask (app.py)
 
 | Modelo | Uso |
 |---|---|
-| `qwen2.5-coder:7b` | Perguntas técnicas sobre Linux, bash, código, terminal |
+| `llama3.1:8b` | Perguntas técnicas sobre Linux, bash, código, terminal |
 | `mistral:7b` | Perguntas gerais e conversas |
 
 A seleção é automática baseada em palavras-chave na pergunta do usuário.
@@ -248,6 +248,7 @@ Busca no DuckDuckGo.
 ---
 
 ## Como alimentar o RAG
+Banco de dados hospedado na Zilliz.Mais informacoes em [ZILLIZ](https://zilliz.com/cloud).
 
 O RAG funciona com qualquer PDF que você enviar pela rota `/pdf`. Exemplos de documentos úteis para o foco do projeto:
 
@@ -265,22 +266,30 @@ Quanto mais documentação relevante você indexar, mais preciso o assistente se
 ```
 chromallama/
 ├── app.py              # Backend Flask principal
+├── apphistori.py       # Historicos de upload de documentos para DB 
 ├── pdf/                # PDFs enviados pelo usuário
-├── db/                 # Banco vetorial ChromaDB
+├── static/
+│   ├──  css/
+│   │    └──style.css # Estilo do frontend 
+│   ├──  img/
+│   │    └── logo.jpeg # Logo do projeto
+│   └──  js/
+│        └── chat_modern.js # Lógica do frontend
 ├── templates/
 │   └── index.html      # Interface web
 ├── static/
 │   └── js/
-│       └── chat-app.js # Lógica do frontend
-└── README.md
+│       └── chat-app.js 
+├── README.md
+└── requirements.txt
 ```
 
 ---
 
 ## Próximos passos
 
-- [ ] Roteamento inteligente entre `/ai`, `/ask_pdf` e `/search_web`
-- [ ] Isolamento do ChromaDB por assunto/tópico
+- [X] Roteamento inteligente entre `/ai`, `/ask_pdf` e `/search_web`
+- [X] Isolamento do ChromaDB por assunto/tópico
 - [ ] Integração com MongoDB para metadados e gestão de sessões
 - [ ] Suporte a Docker para deploy isolado
 - [ ] Suporte a múltiplos usuários com sessões independentes

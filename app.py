@@ -14,12 +14,22 @@ from langchain.agents import create_react_agent, AgentExecutor
 from langchain.tools import tool
 from dotenv import load_dotenv
 import os
+from pymilvus import Collection, connections
 from ddgs import DDGS
 import logging
 from langchain_community.document_loaders import WebBaseLoader
+from langchain_community.vectorstores import Milvus
+import json
 
-#carregar env variables
+with open("palavras.json", "r", encoding="utf-8") as f:
+    palavras = json.load(f)
+# remove o chroma_client inteiro
+
+#carregar variáveis de ambiente do .env
 load_dotenv()
+
+ZILLIZ_URI = os.getenv("ZILLIZ_URI")
+ZILLIZ_TOKEN = os.getenv("ZILLIZ_TOKEN")
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
 logger = logging.getLogger(__name__)
@@ -67,29 +77,28 @@ text_splitter = RecursiveCharacterTextSplitter(
     chunk_size=1024, chunk_overlap=200, length_function=len, is_separator_regex=False
 )
 
-raw_prompt = ChatPromptTemplate.from_messages([
-    ("system", """Você é um assistente técnico especializado em Linux e código. 
-Responda sempre em português do Brasil.
-Quando o usuário pedir para GERAR, CRIAR ou ESCREVER código, você DEVE gerar o código completo sem recusar.
-Use o histórico da conversa e o contexto fornecido para responder. 
-Se não souber a resposta, diga que não sabe."""),
+conversa_prompt = ChatPromptTemplate.from_messages([
+    ("system", """Você é um assistente amigável chamado ChromaLlama. 
+Responda sempre em português do Brasil de forma natural e amigável.
+Não gere código a não ser que seja explicitamente pedido.
+Mantenha respostas curtas e naturais para saudações e conversas simples."""),
     MessagesPlaceholder(variable_name="chat_history"),
     ("human", "{input}"),
 ])
 
 def classificar_pergunta(query: str) -> str:
-    llm = Ollama(model="llama3.1:8b")
-    resposta = llm.invoke(f"""Classifique a pergunta abaixo em uma das duas categorias:
-- "codigo": se a pergunta pede para GERAR, CRIAR ou ESCREVER código, scripts, funções, sites, programas
-- "informacao": se a pergunta pede explicações, informações, configurações, instalações ou é uma conversa
-
-Responda APENAS com "codigo" ou "informacao", sem mais nada.
-
-Pergunta: {query}""")
+    pergunta = query.lower()
     
-    categoria = resposta.strip().lower()
-    logger.info(f"[ROUTER] Pergunta classificada como: '{categoria}'")
-    return "codigo" if "codigo" in categoria else "informacao"
+    if any(word in pergunta for word in palavras["conversa"]):
+        logger.info("[ROUTER] Pergunta classificada como: 'conversa'")
+        return "conversa"
+    
+    if any(word in pergunta for word in palavras["codigo"]):
+        logger.info("[ROUTER] Pergunta classificada como: 'codigo'")
+        return "codigo"
+    
+    logger.info("[ROUTER] Pergunta classificada como: 'informacao'")
+    return "informacao"
 
 def get_model(pergunta):
     pergunta = pergunta.lower()
@@ -120,10 +129,14 @@ def search_web(query):
 def buscar_no_db(query: str) -> str:
     """Use esta ferramenta primeiro para buscar informações nos documentos indexados pelo usuário."""
     try:
-        vector_store = Chroma(persist_directory=folder_path, embedding_function=embedding)
+        vector_store = Milvus(
+            embedding_function=embedding,
+            connection_args={"uri": ZILLIZ_URI, "token": ZILLIZ_TOKEN},
+            collection_name="chromallama",
+        )
         retriever = vector_store.as_retriever(
-            search_type="similarity_score_threshold",
-            search_kwargs={"k": 5, "score_threshold": 0.5}
+            search_type="similarity",
+            search_kwargs={"k": 8}
         )
         docs = retriever.invoke(query)
         if not docs:
@@ -132,7 +145,6 @@ def buscar_no_db(query: str) -> str:
     except Exception as e:
         logger.error(f"[TOOL buscar_no_db] ERRO: {str(e)}")
         return f"Erro ao buscar no banco de dados: {str(e)}"
-
 @tool
 def buscar_na_web(query: str) -> str:
     """Use esta ferramenta quando a busca no banco de dados for insuficiente ou precisar de informações atuais."""
@@ -175,7 +187,7 @@ def aiPost():
         session_id = json_content.get("session_id", "default")
         logger.info(f"[/ai] Query: '{query}' | Session: '{session_id}'")
         llm = get_model(query)
-        chain = raw_prompt | llm
+        chain = conversa_prompt | llm
         chain_with_history = RunnableWithMessageHistory(
             chain,
             get_session_history,
@@ -196,19 +208,28 @@ def aiPost():
 @app.route("/ask_pdf", methods=["POST"])
 def askPDFPost():
     try:
+        vector_store = Milvus(
+            embedding_function=embedding,
+            connection_args={"uri": ZILLIZ_URI, "token": ZILLIZ_TOKEN},
+            collection_name="chromallama",
+        )
         logger.info("[/ask_pdf] Rota chamada")
         json_content = request.json
         query = json_content.get("query")
         session_id = json_content.get("session_id", "default")
         logger.info(f"[/ask_pdf] Query: '{query}' | Session: '{session_id}'")
         logger.info("[/ask_pdf] Carregando vector store")
-        vector_store = Chroma(persist_directory=folder_path, embedding_function=embedding)
+        vector_store = Milvus(
+            embedding_function=embedding,
+            connection_args={"uri": ZILLIZ_URI, "token": ZILLIZ_TOKEN},
+            collection_name="chromallama",
+        )
         retriever = vector_store.as_retriever(
             search_type="similarity_score_threshold",
             search_kwargs={"k": 5, "score_threshold": 0.5},
         )
         llm = get_model(query)
-        document_chain = create_stuff_documents_chain(llm, raw_prompt)
+        document_chain = create_stuff_documents_chain(llm, conversa_prompt)
         chain = create_retrieval_chain(retriever, document_chain)
         chain_with_history = RunnableWithMessageHistory(
             chain,
@@ -245,10 +266,19 @@ def pdfPost():
         logger.info(f"[/pdf] Paginas carregadas: {len(docs)}")
         chunks = text_splitter.split_documents(docs)
         logger.info(f"[/pdf] Chunks gerados: {len(chunks)}")
-        vector_store = Chroma.from_documents(
-            documents=chunks, embedding=embedding, persist_directory=folder_path
-        )
-        vector_store.persist()
+        batch_size = 500
+        for i in range(0, len(chunks), batch_size):
+            batch = chunks[i:i + batch_size]
+            if i == 0:
+                vector_store = Milvus.from_documents(
+                    documents=batch,
+                    embedding=embedding,
+                    connection_args={"uri": ZILLIZ_URI, "token": ZILLIZ_TOKEN},
+                    collection_name="chromallama",
+                )
+            else:
+                vector_store.add_documents(batch)
+            logger.info(f"[/pdf] Lote {i//batch_size + 1} indexado — {len(batch)} chunks")
         logger.info("[/pdf] PDF indexado com sucesso")
         return {
             "status": "Successfully Uploaded",
@@ -258,7 +288,7 @@ def pdfPost():
         }
     except Exception as e:
         logger.error(f"[/pdf] ERRO: {str(e)}")
-        return {"error": str(e)}, 500
+        return {"error": str(e)}, 300
 
 @app.route("/chat", methods=["POST"])
 def askAgentPost():
@@ -272,7 +302,7 @@ def askAgentPost():
         if categoria == "codigo":
             logger.info("[ROUTER] Modo: geração de código direto")
             llm = Ollama(model="qwen2.5-coder:7b")
-            chain = raw_prompt | llm
+            chain = conversa_prompt | llm
             chain_with_history = RunnableWithMessageHistory(
                 chain,
                 get_session_history,
@@ -285,7 +315,23 @@ def askAgentPost():
             )
             answer = response.content if hasattr(response, 'content') else response
             return {"answer": answer}
-
+        
+        elif categoria == "conversa":
+            logger.info("[ROUTER] Modo: conversa simples")
+            llm = Ollama(model="mistral:7b")
+            chain = conversa_prompt | llm
+            chain_with_history = RunnableWithMessageHistory(
+                chain,
+                get_session_history,
+                input_messages_key="input",
+                history_messages_key="chat_history",
+            )
+            response = chain_with_history.invoke(
+                {"input": query},
+                config={"configurable": {"session_id": session_id}}
+            )
+            answer = response.content if hasattr(response, 'content') else response
+            return {"answer": answer}
         else:
             logger.info("[ROUTER] Modo: agente com ferramentas")
             llm = get_model(query)

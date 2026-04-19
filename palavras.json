@@ -1,0 +1,14 @@
+{
+    "conversa": [
+        "oi", "olá", "ola", "bom dia", "boa tarde", "boa noite",
+        "obrigado", "obrigada", "tchau", "até mais", "tudo bem", "como vai",
+        "quem criou", "o que é", "o que e", "me fale sobre", "me conte sobre",
+        "queria saber", "pode me explicar", "como funciona", "história de",
+        "historia de", "quando foi criado", "quando surgiu"
+    ],
+    "codigo": [
+        "crie", "gere", "escreva", "faça", "coda", "programa",
+        "script", "função", "classe", "html", "css", "python",
+        "bash", "javascript", "código"
+    ]
+}

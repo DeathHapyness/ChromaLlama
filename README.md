@@ -200,6 +200,14 @@ Acesse `http://localhost:8080` no navegador.
 
 ---
 
+## Scripts e Refinamento 
+
+### `indexar_datasets.py`
+rode esse comando apenas uma vez
+```
+indexar_datasets.py
+```
+
 ## Rotas da API
 
 ### `POST /ai`
@@ -267,6 +275,7 @@ Quanto mais documentação relevante você indexar, mais preciso o assistente se
 chromallama/
 ├── app.py              # Backend Flask principal
 ├── apphistori.py       # Historicos de upload de documentos para DB 
+├── indexar_datasets.py # Script para indexacao de asets do hugging face 
 ├── pdf/                # PDFs enviados pelo usuário
 ├── static/
 │   ├──  css/
@@ -280,6 +289,7 @@ chromallama/
 ├── static/
 │   └── js/
 │       └── chat-app.js 
+├── palavras.json
 ├── README.md
 └── requirements.txt
 ```
@@ -292,7 +302,7 @@ chromallama/
 - [X] Isolamento do ChromaDB por assunto/tópico
 - [ ] Integração com MongoDB para metadados e gestão de sessões
 - [ ] Suporte a Docker para deploy isolado
-- [ ] Suporte a múltiplos usuários com sessões independentes
+- [ ] Refinamento do modelo com Unsloth
 
 ---
 

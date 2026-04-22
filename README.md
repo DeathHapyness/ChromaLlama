@@ -207,6 +207,7 @@ rode esse comando apenas uma vez
 ```
 indexar_datasets.py
 ```
+---
 
 ## Rotas da API
 

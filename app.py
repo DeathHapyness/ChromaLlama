@@ -104,8 +104,8 @@ def get_model(pergunta):
     pergunta = pergunta.lower()
     palavras_tecnicas = ["bash", "linux", "script", "code", "terminal", "python", "git", "ssh", "kernel", "package", "install", "comando", "html", "css", "javascript", "js", "site", "web","codigo","java","c++","c#","ruby","go","rust","docker","kubernetes","ansible","terraform","cloud","aws","azure","gcp"] 
     if any(word in pergunta for word in palavras_tecnicas):
-        logger.info("[MODEL SELECT] Query tecnica detectada -> usando llama3.1:8b")
-        return Ollama(model="llama3.1:8b")  
+        logger.info("[MODEL SELECT] Query tecnica detectada -> usando qwen2.5-coder:7b")
+        return Ollama(model="qwen2.5-coder:7b")  
     logger.info("[MODEL SELECT] Query geral detectada -> usando mistral:7b")
     return Ollama(model="mistral:7b")
 
@@ -129,19 +129,38 @@ def search_web(query):
 def buscar_no_db(query: str) -> str:
     """Use esta ferramenta primeiro para buscar informações nos documentos indexados pelo usuário."""
     try:
-        vector_store = Milvus(
+        resultados = []
+
+        # Busca na coleção de documentos PDF
+        vector_store_docs = Milvus(
             embedding_function=embedding,
             connection_args={"uri": ZILLIZ_URI, "token": ZILLIZ_TOKEN},
             collection_name="chromallama",
         )
-        retriever = vector_store.as_retriever(
+        retriever_docs = vector_store_docs.as_retriever(
             search_type="similarity",
-            search_kwargs={"k": 8}
+            search_kwargs={"k": 5}
         )
-        docs = retriever.invoke(query)
-        if not docs:
+        docs = retriever_docs.invoke(query)
+        resultados.extend(docs)
+
+        # Busca na coleção de datasets
+        vector_store_datasets = Milvus(
+            embedding_function=embedding,
+            connection_args={"uri": ZILLIZ_URI, "token": ZILLIZ_TOKEN},
+            collection_name="chromallama_datasets",
+        )
+        retriever_datasets = vector_store_datasets.as_retriever(
+            search_type="similarity",
+            search_kwargs={"k": 5}
+        )
+        docs_datasets = retriever_datasets.invoke(query)
+        resultados.extend(docs_datasets)
+
+        if not resultados:
             return "Nenhum documento relevante encontrado no banco de dados."
-        return "\n\n".join([doc.page_content for doc in docs])
+        
+        return "\n\n".join([doc.page_content for doc in resultados])
     except Exception as e:
         logger.error(f"[TOOL buscar_no_db] ERRO: {str(e)}")
         return f"Erro ao buscar no banco de dados: {str(e)}"
